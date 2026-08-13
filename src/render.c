@@ -7,34 +7,56 @@
 #define STB_TRUETYPE_IMPLEMENTATION
 #include <stb/stb_truetype.h>
 #include "render.h"
-#include "transform.h"
 #include "life.h"
 
 struct render_state Render = {0};
+static Projection proj = {0};
 
 float identity[16] = {1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1};
 
-static const float startButtonLeft = -0.45f;
-static const float startButtonRight = 0.45f;
-static const float startButtonBottom = 0.10f;
-static const float startButtonTop = 0.38f;
+typedef struct {
+    float left, right, bottom, top;
+} Buttons;
 
-static const float exitButtonLeft = -0.45f;
-static const float exitButtonRight = 0.45f;
-static const float exitButtonBottom = -0.32f;
-static const float exitButtonTop = -0.04f;
-
-static const float inputBoxXLeft = -0.50f;
-static const float inputBoxXRight = 0.0f;
-static const float inputBoxYLeft = 0.0f;
-static const float inputBoxYRight = 0.50f;
-static const float inputBoxBottom = -0.75f;
-static const float inputBoxTop = -0.48f;
+static const Buttons startButton = { -0.45f, 0.45f, 0.20f, 0.48f };
+static const Buttons templatesButton = { -0.45f, 0.45f, -0.08f, 0.20f };
+static const Buttons exitButton = { -0.45f, 0.45f, -0.36f, -0.08f };
+static const Buttons aboutButton = { -0.45f, 0.45f, -0.64f, -0.36f };
+static const Buttons faqButton = { -0.45f, 0.45f, -0.92f, -0.64f };
+static const Buttons inputBoxXButton = { -0.50f, 0.00f, -0.75f, -0.48f };
+static const Buttons inputBoxYButton = { 0.00f, 0.50f, -0.75f, -0.48f };
 
 static const int menuFontAtlasWidth = 1024;
 static const int menuFontAtlasHeight = 1024;
 static const float menuFontPixelHeight = 48.0f;
 static stbtt_packedchar menuFontChars[96];
+
+
+
+Projection* getProjection(){
+    return &proj;
+}
+
+void makeOrtho(float left, float right, float bottom, float top, float near, float far, Projection* projection){
+    float rl = right - left;
+    float tb = top - bottom;
+    float fn = far - near;
+    float* m = projection->mat;
+
+    m[0] = 2.0f / rl;              m[1] = 0.0f;                   m[2] = 0.0f;                 m[3] = 0.0f;                     
+    m[4] = 0.0f;                   m[5] = 2.0f / tb;              m[6] = 0.0f;                 m[7] = 0.0f;
+    m[8] = 0.0f;                   m[9] = 0.0f;                   m[10] = -2.0f / fn;          m[11] = 0.0f;
+    m[12] = -(right + left) / rl;  m[13] = -(top + bottom) / tb;  m[14] = -(far + near) / fn;  m[15] = 1.0f;
+}
+
+void invertOrtho(Projection* proj, Projection* i) {
+    float* m = proj->mat;
+    float* inv = i->mat;
+    inv[0] = 1.0f / m[0];      inv[1] = 0.0f;             inv[2] = 0.0f;              inv[3] = 0.0f;                
+    inv[4] = 0.0f;             inv[5] = 1.0f / m[5];      inv[6] = 0.0f;              inv[7] = 0.0f;                
+    inv[8] = 0.0f;             inv[9] = 0.0f;             inv[10] = 1.0f / m[10];     inv[11] = 0.0f;                
+    inv[12] = -m[12] * inv[0]; inv[13] = -m[13] * inv[5]; inv[14] = -m[14] * inv[10]; inv[15] = 1.0f;                
+}
 
 static void getMenuProjectionMatrix(float* outMat) {
     int width = 1024, height = 768;
@@ -60,7 +82,7 @@ static void getMenuProjectionMatrix(float* outMat) {
     outMat[12] = -(right + left) / rl;  outMat[13] = -(top + bottom) / tb;  outMat[14] = -(1.0f - 1.0f) / fn; outMat[15] = 1.0f;
 }
 
-static int compileShaderOrLog(GLuint shader, const char* stageName) {
+static int compileShader(GLuint shader, const char* stageName) {
     GLint success = 0;
     char infoLog[1024];
 
@@ -75,7 +97,7 @@ static int compileShaderOrLog(GLuint shader, const char* stageName) {
     return 1;
 }
 
-static int linkProgramOrLog(GLuint program) {
+static int linkProgram(GLuint program) {
     GLint success = 0;
     char infoLog[1024];
 
@@ -479,7 +501,7 @@ void programCreate(){
     GLuint vertexShader = glCreateShader(GL_VERTEX_SHADER);
     const char* vertexShaderSourcePtr = vertexShaderSource;
     glShaderSource(vertexShader, 1, &vertexShaderSourcePtr, NULL);
-    if (!compileShaderOrLog(vertexShader, "Vertex")) {
+    if (!compileShader(vertexShader, "Vertex")) {
         glDeleteShader(vertexShader);
         free(vertexShaderSource);
         free(fragmentShaderSource);
@@ -489,7 +511,7 @@ void programCreate(){
     GLuint fragmentShader = glCreateShader(GL_FRAGMENT_SHADER);
     const char* fragmentShaderSourcePtr = fragmentShaderSource;
     glShaderSource(fragmentShader, 1, &fragmentShaderSourcePtr, NULL);
-    if (!compileShaderOrLog(fragmentShader, "Fragment")) {
+    if (!compileShader(fragmentShader, "Fragment")) {
         glDeleteShader(vertexShader);
         glDeleteShader(fragmentShader);
         free(vertexShaderSource);
@@ -508,7 +530,7 @@ void programCreate(){
 
     glAttachShader(Render.shader.program, vertexShader);
     glAttachShader(Render.shader.program, fragmentShader);
-    if (!linkProgramOrLog(Render.shader.program)) {
+    if (!linkProgram(Render.shader.program)) {
         glDeleteProgram(Render.shader.program);
         Render.shader.program = 0;
         glDeleteShader(vertexShader);
@@ -532,6 +554,7 @@ void programCreate(){
 }
 
 void updateTexture(){
+    
     if (!Render.textureData || Render.textureWidth <= 0 || Render.textureHeight <= 0) {
         return;
     }
@@ -539,23 +562,34 @@ void updateTexture(){
     for(int i = 0; i < Render.textureHeight; i++) {
         for(int j = 0; j < Render.textureWidth; j++) {
             int fieldIdx = i * Render.textureWidth + j;
-            unsigned char cell = Life.current[fieldIdx];
+            unsigned char cell = Life.state[fieldIdx].cur;
             
             int texIdx = (i * Render.textureWidth + j) * 4;
+
+            int isCyclic = (Life.state[fieldIdx].cycleCount >= 20);
             if (cell == 0){
-                Render.textureData[texIdx + 0] = 255; 
+                Render.textureData[texIdx + 0] = 255;
                 Render.textureData[texIdx + 1] = 255;
                 Render.textureData[texIdx + 2] = 255; 
                 Render.textureData[texIdx + 3] = 0; 
             }
             else{
-                Render.textureData[texIdx + 0] = 0;  
-                Render.textureData[texIdx + 1] = 0;  
-                Render.textureData[texIdx + 2] = 0;   
-                Render.textureData[texIdx + 3] = 255; 
+                if (isCyclic) {
+                    Render.textureData[texIdx + 0] = 255;  
+                    Render.textureData[texIdx + 1] = 0;  
+                    Render.textureData[texIdx + 2] = 0;   
+                    Render.textureData[texIdx + 3] = 255; 
+                }
+                else {
+                    Render.textureData[texIdx + 0] = 0;  
+                    Render.textureData[texIdx + 1] = 0;  
+                    Render.textureData[texIdx + 2] = 0;   
+                    Render.textureData[texIdx + 3] = 255;
+                }
             }
         }
     }
+
     glBindTexture(GL_TEXTURE_2D, Render.maskTex);
     glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, Render.textureWidth, Render.textureHeight, GL_RGBA, GL_UNSIGNED_BYTE, Render.textureData);
 
@@ -591,7 +625,16 @@ int menuInit() {
 
     Render.menuStartTex = loadTextureFromFile("img/start.png");
     Render.menuExitTex = loadTextureFromFile("img/exit.png");
-    if (Render.menuStartTex == 0 || Render.menuExitTex == 0) {
+    Render.menuTemplTex = loadTextureFromFile("img/templates.png");
+    Render.menuTemp1Tex = loadTextureFromFile("img/glider.png");
+    Render.menuTemp2Tex = loadTextureFromFile("img/square.png");
+    Render.menuTemp3Tex = loadTextureFromFile("img/blinker.png");
+    Render.menuTemp4Tex = loadTextureFromFile("img/empty.png");
+    Render.menuAboutTex = loadTextureFromFile("img/about.png");
+    Render.menuFaqTex = loadTextureFromFile("img/help.png");
+
+    if (Render.menuStartTex == 0 || Render.menuExitTex == 0 || Render.menuTemplTex == 0 || Render.menuTemp1Tex == 0 || Render.menuTemp2Tex == 0 || 
+        Render.menuTemp3Tex == 0 || Render.menuTemp4Tex == 0 || Render.menuAboutTex == 0 || Render.menuFaqTex == 0) {
         return 0;
     }
 
@@ -639,36 +682,183 @@ void renderMenu(const char* sizeX, const char* sizeY, int inputMode, int activeF
     glActiveTexture(GL_TEXTURE0);
     glBindVertexArray(Render.menuVAO);
 
-    drawMenuButton(Render.menuStartTex, startButtonLeft, startButtonRight, startButtonBottom, startButtonTop);
-    drawMenuButton(Render.menuExitTex, exitButtonLeft, exitButtonRight, exitButtonBottom, exitButtonTop);
+    drawMenuButton(Render.menuStartTex, startButton.left, startButton.right, startButton.bottom, startButton.top);
+    drawMenuButton(Render.menuExitTex, exitButton.left, exitButton.right, exitButton.bottom, exitButton.top);
 
     if (inputMode) {
         glUniform1i(Render.shader.mode, 1);
-        drawColoredQuad(inputBoxXLeft, inputBoxXRight, inputBoxBottom, inputBoxTop, 0.08f, 0.10f, 0.16f, 1.0f);
-        drawColoredQuad(inputBoxXLeft + 0.01f, inputBoxXRight - 0.01f, inputBoxBottom + 0.01f, inputBoxTop - 0.01f, activeField == 0 ? 0.93f : 0.86f, activeField == 0 ? 0.98f : 0.90f, activeField == 0 ? 1.00f : 0.95f, 1.0f);
-        drawColoredQuad(inputBoxYLeft, inputBoxYRight, inputBoxBottom, inputBoxTop, 0.08f, 0.10f, 0.16f, 1.0f);
-        drawColoredQuad(inputBoxYLeft + 0.01f, inputBoxYRight - 0.01f, inputBoxBottom + 0.01f, inputBoxTop - 0.01f, activeField == 1 ? 0.93f : 0.86f, activeField == 1 ? 0.98f : 0.90f, activeField == 1 ? 1.00f : 0.95f, 1.0f);
+        drawColoredQuad(inputBoxXButton.left, inputBoxXButton.right, inputBoxXButton.bottom, inputBoxXButton.top, 0.08f, 0.10f, 0.16f, 1.0f);
+        drawColoredQuad(inputBoxXButton.left + 0.01f, inputBoxXButton.right - 0.01f, inputBoxXButton.bottom + 0.01f, inputBoxXButton.top - 0.01f, activeField == 0 ? 0.4f : 0.2f, activeField == 0 ? 0.4f : 0.2f, activeField == 0 ? 0.4f : 0.2f, 1.0f);
+        drawColoredQuad(inputBoxYButton.left, inputBoxYButton.right, inputBoxYButton.bottom, inputBoxYButton.top, 0.08f, 0.10f, 0.16f, 1.0f);
+        drawColoredQuad(inputBoxYButton.left + 0.01f, inputBoxYButton.right - 0.01f, inputBoxYButton.bottom + 0.01f, inputBoxYButton.top - 0.01f, activeField == 1 ? 0.4f : 0.2f, activeField == 1 ? 0.4f : 0.2f, activeField == 1 ? 0.4f : 0.2f, 1.0f);
 
         glUniform1i(Render.shader.mode, 0);
-        drawTextString(sizeX, inputBoxXLeft + 0.01f, inputBoxXRight - 0.01f, inputBoxBottom + 0.02f, inputBoxTop - 0.02f, 0.0070f, 0.0f, 0.0f, 0.0f, 1.0f);
-        drawTextString(sizeY, inputBoxYLeft + 0.01f, inputBoxYRight - 0.01f, inputBoxBottom + 0.02f, inputBoxTop - 0.02f, 0.0070f, 0.0f, 0.0f, 0.0f, 1.0f);
+        drawTextString(sizeX, inputBoxXButton.left + 0.01f, inputBoxXButton.right - 0.01f, inputBoxXButton.bottom + 0.02f, inputBoxXButton.top - 0.02f, 0.0070f, 0.0f, 0.0f, 0.0f, 1.0f);
+        drawTextString(sizeY, inputBoxYButton.left + 0.01f, inputBoxYButton.right - 0.01f, inputBoxYButton.bottom + 0.02f, inputBoxYButton.top - 0.02f, 0.0070f, 0.0f, 0.0f, 0.0f, 1.0f);
+    }
+    else {
+        drawMenuButton(Render.menuTemplTex, templatesButton.left, templatesButton.right, templatesButton.bottom, templatesButton.top);
+        drawMenuButton(Render.menuAboutTex, aboutButton.left, aboutButton.right, aboutButton.bottom, aboutButton.top);
+        drawMenuButton(Render.menuFaqTex, faqButton.left, faqButton.right, faqButton.bottom, faqButton.top);
     }
 
     glBindVertexArray(0);
 }
 
-int menuHitTestNdc(float x, float y) {
-    if (x >= startButtonLeft && x <= startButtonRight && y >= startButtonBottom && y <= startButtonTop) {
+void renderTemplatesMenu(void) {
+    if (!Render.menuReady || Render.shader.program == 0) return;
+
+    float menuProjectionMat[16];
+    getMenuProjectionMatrix(menuProjectionMat);
+
+    glUseProgram(Render.shader.program);
+    glUniform1i(Render.shader.mask, 0);
+    glUniform1i(Render.shader.mode, 0);
+    glUniformMatrix4fv(Render.shader.projection, 1, GL_FALSE, menuProjectionMat);
+    glUniformMatrix4fv(Render.shader.model, 1, GL_FALSE, identity);
+    glUniformMatrix4fv(Render.shader.view, 1, GL_FALSE, identity);
+
+    glActiveTexture(GL_TEXTURE0);
+    glBindVertexArray(Render.menuVAO);
+
+    const float left = -0.55f;
+    const float right = 0.55f;
+    const float yStart = 0.35f;
+    const float step = 0.28f;
+
+    drawMenuButton(Render.menuTemp1Tex, left, right, yStart - 0*step - 0.13f, yStart - 0*step + 0.13f);
+    drawMenuButton(Render.menuTemp2Tex, left, right, yStart - 1*step - 0.13f, yStart - 1*step + 0.13f);
+    drawMenuButton(Render.menuTemp3Tex, left, right, yStart - 2*step - 0.13f, yStart - 2*step + 0.13f);
+    drawMenuButton(Render.menuTemp4Tex, left, right, yStart - 3*step - 0.13f, yStart - 3*step + 0.13f);
+
+    glBindVertexArray(0);
+}
+
+void renderAboutMenu(void) {
+    if (!Render.menuReady || Render.shader.program == 0) return;
+
+    float menuProjectionMat[16];
+    getMenuProjectionMatrix(menuProjectionMat);
+
+    glUseProgram(Render.shader.program);
+    glUniform1i(Render.shader.mask, 0);
+    glUniform1i(Render.shader.mode, 0);
+    glUniformMatrix4fv(Render.shader.projection, 1, GL_FALSE, menuProjectionMat);
+    glUniformMatrix4fv(Render.shader.model, 1, GL_FALSE, identity);
+    glUniformMatrix4fv(Render.shader.view, 1, GL_FALSE, identity);
+
+    glActiveTexture(GL_TEXTURE0);
+    glBindVertexArray(Render.menuVAO);
+
+    float left = -0.85f;
+    float right = 0.85f;
+    float y = 0.65f;
+    float step = 0.25f;
+    float scale_title = 0.0065f;
+    float scale_normal = 0.0048f;
+    float scale_small = 0.0042f;
+
+    drawTextString("Game of Life v1.0", left, right, y+0.25f, y+0.07f, scale_title, 1,1,1,1);
+    y -= step;
+    drawTextString("Authors: Andrey Ustyancev", left, right, y, y+0.07f, scale_normal, 1,1,1,1);
+    y -= step;
+    drawTextString("            Vlad Bandurko", left, right, y, y+0.07f, scale_normal, 1,1,1,1);
+    y -= step;
+    drawTextString("Group: 5131001/50602", left, right, y, y+0.07f, scale_normal, 1,1,1,1);
+    y -= step;
+    drawTextString("University: SPBSTU, ICCS", left, right, y, y+0.07f, scale_normal, 1,1,1,1);
+    y -= step;
+    drawTextString("Department: HSC", left, right, y, y+0.07f, scale_normal, 1,1,1,1);
+    y -= step;
+    drawTextString("Year: 2026", left, right, y, y+0.07f, scale_small, 1,1,1,1);
+
+    glBindVertexArray(0);
+}
+
+void renderFaqMenu(void) {
+    if (!Render.menuReady || Render.shader.program == 0) return;
+
+    float menuProjectionMat[16];
+    getMenuProjectionMatrix(menuProjectionMat);
+
+    glUseProgram(Render.shader.program);
+    glUniform1i(Render.shader.mask, 0);
+    glUniform1i(Render.shader.mode, 0);
+    glUniformMatrix4fv(Render.shader.projection, 1, GL_FALSE, menuProjectionMat);
+    glUniformMatrix4fv(Render.shader.model, 1, GL_FALSE, identity);
+    glUniformMatrix4fv(Render.shader.view, 1, GL_FALSE, identity);
+
+    glActiveTexture(GL_TEXTURE0);
+    glBindVertexArray(Render.menuVAO);
+
+    float left = -0.95f;
+    float right = 0.95f;
+    float y = 0.7f;
+    float step = 0.18f;
+    float scale = 0.004f;
+
+    drawTextString("Game controls", -0.85f, 0.85f, y+0.25f, y+0.07f, 0.0065f, 1,1,1,1);
+    y -= step;
+    drawTextString("W, A, S, D - move camera                                ", left, right, y, y+0.07f, scale, 1,1,1,1);
+    y -= step;
+    drawTextString("Mouse wheel - zoom                                       ", left, right, y, y+0.07f, scale, 1,1,1,1);
+    y -= step;
+    drawTextString("Left mouse button - add cell                      ", left, right, y, y+0.07f, scale, 1,1,1,1);
+    y -= step;
+    drawTextString("Right mouse button - remove cell         ", left, right, y, y+0.07f, scale, 1,1,1,1);
+    y -= step;
+    drawTextString("Space - pause/resume                                 ", left, right, y, y+0.07f, scale, 1,1,1,1);
+    y -= step;
+    drawTextString("Z - slow down                                                       ", left, right, y, y+0.07f, scale, 1,1,1,1);
+    y -= step;
+    drawTextString("X - speed up                                                          ", left, right, y, y+0.07f, scale, 1,1,1,1);
+    y -= step;
+    drawTextString("F11 - fullscreen                                                    ", left, right, y, y+0.07f, scale, 1,1,1,1);
+    y -= step;
+    drawTextString("ESC - exit                                                                  ", left, right, y, y+0.07f, scale, 1,1,1,1);
+
+    glBindVertexArray(0);
+}
+
+int menuHitTestNdc(float x, float y, int inputMode) {
+    if (inputMode) {
+        if (x >= inputBoxXButton.left && x <= inputBoxXButton.right && y >= inputBoxXButton.bottom && y <= inputBoxXButton.top) {
+            return 3;
+        }
+        if (x >= inputBoxYButton.left && x <= inputBoxYButton.right && y >= inputBoxYButton.bottom && y <= inputBoxYButton.top) {
+            return 4;
+        }
+    }
+
+    if (x >= startButton.left && x <= startButton.right && y >= startButton.bottom && y <= startButton.top) {
         return 1;
     }
-    if (x >= exitButtonLeft && x <= exitButtonRight && y >= exitButtonBottom && y <= exitButtonTop) {
+    if (x >= exitButton.left && x <= exitButton.right && y >= exitButton.bottom && y <= exitButton.top) {
         return 2;
     }
-    if (x >= inputBoxXLeft && x <= inputBoxXRight && y >= inputBoxBottom && y <= inputBoxTop) {
-        return 3;
+    
+    if (x >= templatesButton.left && x <= templatesButton.right && y >= templatesButton.bottom && y <= templatesButton.top) {
+        return 5;
     }
-    if (x >= inputBoxYLeft && x <= inputBoxYRight && y >= inputBoxBottom && y <= inputBoxTop) {
-        return 4;
+    if (x >= aboutButton.left && x <= aboutButton.right && y >= aboutButton.bottom && y <= aboutButton.top) {
+        return 6;
+    }
+    if (x >= faqButton.left && x <= faqButton.right && y >= faqButton.bottom && y <= faqButton.top) {
+        return 7;
+    }
+
+    return 0;
+}
+
+int templatesHitTestNdc(float x, float y) {
+    const float left = -0.55f, right = 0.55f;
+    const float yStart = 0.35f;
+    const float step = 0.28f;
+    const float height = 0.24f;
+    for (int i = 0; i < 4; ++i) {
+        float bottom = yStart - i * step - height/2.0f;
+        float top = bottom + height;
+        if (x >= left && x <= right && y >= bottom && y <= top) return i + 1;
     }
     return 0;
 }
@@ -685,6 +875,28 @@ void cleanupMenuResources() {
     if (Render.menuExitTex != 0) {
         glDeleteTextures(1, &Render.menuExitTex);
         Render.menuExitTex = 0;
+    }
+    if (Render.menuTemplTex != 0) {
+        glDeleteTextures(1, &Render.menuTemplTex);
+        Render.menuTemplTex = 0;
+    }
+    if (Render.menuTemp1Tex) {
+        glDeleteTextures(1, &Render.menuTemp1Tex);
+    }
+    if (Render.menuTemp2Tex) {
+        glDeleteTextures(1, &Render.menuTemp2Tex);
+    }
+    if (Render.menuTemp3Tex) {
+        glDeleteTextures(1, &Render.menuTemp3Tex);
+    }
+    if (Render.menuTemp4Tex) {
+        glDeleteTextures(1, &Render.menuTemp4Tex);
+    }
+    if (Render.menuAboutTex) {
+        glDeleteTextures(1, &Render.menuAboutTex);
+    }
+    if (Render.menuFaqTex) {
+        glDeleteTextures(1, &Render.menuFaqTex);
     }
     if (Render.menuEBO != 0) {
         glDeleteBuffers(1, &Render.menuEBO);

@@ -1,13 +1,20 @@
 #include <GLFW/glfw3.h>
 #include <stdio.h>
+#include <string.h>
 
 #define STB_IMAGE_IMPLEMENTATION
 #include <stb/stb_image.h>
 
-#include "transform.h"
 #include "input.h"
 #include "render.h"
 #include "life.h"
+
+int gSelectedPattern = 4;
+int gMenuMode = MENU_MODE_MAIN;
+int gActiveField = 0;
+int gSizeConfirmRequested = 0;
+char gSizeX[8] = "50";
+char gSizeY[8] = "50";
 
 struct input_state Input = {
     .zoom = 1.0f,
@@ -22,6 +29,102 @@ struct input_state Input = {
     .windowedWidth = 0,
     .windowedHeight = 0,
 };
+
+static void appendDigit(char* buffer, size_t capacity, char digit) {
+    size_t len = strlen(buffer);
+    if (len >= 3) {
+        return;
+    }
+    if (len + 1 < capacity) {
+        if (len == 1 && buffer[0] == '0') {
+            buffer[0] = digit;
+            return;
+        }
+        buffer[len] = digit;
+        buffer[len + 1] = '\0';
+    }
+}
+
+static void removeLastDigit(char* buffer) {
+    size_t len = strlen(buffer);
+    if (len > 0) {
+        buffer[len - 1] = '\0';
+    }
+    if (buffer[0] == '\0') {
+        buffer[0] = '0';
+        buffer[1] = '\0';
+    }
+}
+
+void updateMenuTitle(GLFWwindow* window) {
+    glfwSetWindowTitle(window, "Game of Life");
+}
+
+void menuFramebufferSizeCallback(GLFWwindow* window, int width, int height) {
+    (void)window;
+    glViewport(0, 0, width, height);
+}
+
+void menuKeyCallback(GLFWwindow* window, int key, int scancode, int action, int mods) {
+    (void)scancode;
+    (void)mods;
+
+    if (action != GLFW_PRESS && action != GLFW_REPEAT) {
+        return;
+    }
+
+    if (key == GLFW_KEY_F11 && action == GLFW_PRESS) {
+        Input.isFullscreen = !Input.isFullscreen;
+        
+        if (Input.isFullscreen) {
+            glfwGetWindowPos(window, &Input.windowedX, &Input.windowedY);
+            glfwGetWindowSize(window, &Input.windowedWidth, &Input.windowedHeight);
+            
+            GLFWmonitor* monitor = glfwGetPrimaryMonitor();
+            const GLFWvidmode* mode = glfwGetVideoMode(monitor);
+            
+            glfwSetWindowMonitor(window, monitor, 0, 0, mode->width, mode->height, mode->refreshRate);
+        } else {
+            glfwSetWindowMonitor(window, NULL, Input.windowedX, Input.windowedY, Input.windowedWidth, Input.windowedHeight, 0);
+        }
+        return;
+    }
+
+    if (gMenuMode == MENU_MODE_MAIN) {
+        if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS) {
+            glfwSetWindowShouldClose(window, 1);
+        }
+        return;
+    }
+
+    if (key == GLFW_KEY_TAB && action == GLFW_PRESS) {
+        gActiveField = 1 - gActiveField;
+    } else if (key == GLFW_KEY_BACKSPACE) {
+        if (gActiveField == 0) {
+            removeLastDigit(gSizeX);
+        } else {
+            removeLastDigit(gSizeY);
+        }
+    } else if (key == GLFW_KEY_ENTER || key == GLFW_KEY_KP_ENTER) {
+        gSizeConfirmRequested = 1;
+    } else if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS) {
+        gMenuMode = MENU_MODE_MAIN;
+    }
+}
+
+void menuCharCallback(GLFWwindow* window, unsigned int codepoint) {
+    (void)window;
+    if (gMenuMode != MENU_MODE_SIZE_INPUT) {
+        return;
+    }
+    if (codepoint >= '0' && codepoint <= '9') {
+        if (gActiveField == 0) {
+            appendDigit(gSizeX, sizeof(gSizeX), (char)codepoint);
+        } else {
+            appendDigit(gSizeY, sizeof(gSizeY), (char)codepoint);
+        }
+    }
+}
 
 static float clampFloat(float value, float minValue, float maxValue) {
     if (value < minValue) return minValue;
@@ -68,6 +171,23 @@ void keyCallback(GLFWwindow* window, int key, int scancode, int action, int mod)
     }
     if(key == GLFW_KEY_SPACE && action == GLFW_PRESS){
         Input.freeze = !Input.freeze;
+    }
+    if(key == GLFW_KEY_P && action == GLFW_PRESS){
+        for(int x = 0; x < Life.height; ++x){
+            for(int y = 0; y < Life.width; ++y){
+                char life = rand() % 3 == 0;
+                Life.state[y * Life.width + x].cur = life;
+            }
+        }
+        for (int i = 0; i < Life.width * Life.height; i++) {
+            Life.state[i].cycleCount = 0;
+        }
+    }
+    if(key == GLFW_KEY_R && action == GLFW_PRESS){
+        for (int i = 0; i < Life.width * Life.height; i++) {
+            Life.state[i].cycleCount = 0;
+            Life.state[i].cur = 0;
+        }
     }
     if(key == GLFW_KEY_Z && action == GLFW_PRESS){
         Input.updateInterval *= (double)2;
@@ -208,8 +328,11 @@ void processMouseClick(GLFWwindow* window, int action){
     int cellY = (int)((grid->top - worldY) / ((grid->top - grid->bot) / textureHeight));
 
     if (cellX >= 0 && cellX < textureWidth && cellY >= 0 && cellY < textureHeight) {                
-        int index = cellY * textureWidth + cellX;                
-        Life.current[index] = action;               
+        int index = cellY * textureWidth + cellX;
+        Life.state[index].cur = action;
+        Life.state[index].prev = 0;
+        Life.state[index].two = 0;
+        Life.state[index].cycleCount = 0;             
     }
 }
 
@@ -276,4 +399,3 @@ void setCallback(GLFWwindow* window){
     glfwSetCursorPosCallback(window, cursorPositionCallback);
     glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
 }
-

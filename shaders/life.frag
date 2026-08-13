@@ -9,7 +9,7 @@ uniform int mode;
 
 void main() {
     if (mode == 0){
-        FragColor = vColor * texture(mask, vUV);
+        FragColor = texture(mask, vUV);
     } 
     else {
         FragColor = vColor;

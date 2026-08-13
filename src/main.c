@@ -5,119 +5,16 @@
 #include <math.h>
 #include <string.h>
 
-#include "transform.h"
 #include "render.h"
 #include "life.h"
 #include "input.h"
+#include <time.h>
 
-enum menu_mode {
-    MENU_MODE_MAIN = 0,
-    MENU_MODE_SIZE_INPUT = 1
-};
-
-static int gMenuMode = MENU_MODE_MAIN;
-static int gActiveField = 0;
-static int gSizeConfirmRequested = 0;
-static char gSizeX[8] = "50";
-static char gSizeY[8] = "50";
-
-static void appendDigit(char* buffer, size_t capacity, char digit) {
-    size_t len = strlen(buffer);
-    if (len >= 3) {
-        return;  // limit to 3 digits
-    }
-    if (len + 1 < capacity) {
-        if (len == 1 && buffer[0] == '0') {
-            buffer[0] = digit;
-            return;
-        }
-        buffer[len] = digit;
-        buffer[len + 1] = '\0';
-    }
-}
-
-static void removeLastDigit(char* buffer) {
-    size_t len = strlen(buffer);
-    if (len > 0) {
-        buffer[len - 1] = '\0';
-    }
-    if (buffer[0] == '\0') {
-        buffer[0] = '0';
-        buffer[1] = '\0';
-    }
-}
-
-static void updateMenuTitle(GLFWwindow* window) {
-    glfwSetWindowTitle(window, "Game of Life");
-}
-
-static void menuCharCallback(GLFWwindow* window, unsigned int codepoint) {
-    (void)window;
-    if (gMenuMode != MENU_MODE_SIZE_INPUT) {
-        return;
-    }
-    if (codepoint >= '0' && codepoint <= '9') {
-        if (gActiveField == 0) {
-            appendDigit(gSizeX, sizeof(gSizeX), (char)codepoint);
-        } else {
-            appendDigit(gSizeY, sizeof(gSizeY), (char)codepoint);
-        }
-    }
-}
-
-static void menuKeyCallback(GLFWwindow* window, int key, int scancode, int action, int mods) {
-    (void)scancode;
-    (void)mods;
-
-    if (action != GLFW_PRESS && action != GLFW_REPEAT) {
-        return;
-    }
-
-    if (key == GLFW_KEY_F11 && action == GLFW_PRESS) {
-        Input.isFullscreen = !Input.isFullscreen;
-        
-        if (Input.isFullscreen) {
-            glfwGetWindowPos(window, &Input.windowedX, &Input.windowedY);
-            glfwGetWindowSize(window, &Input.windowedWidth, &Input.windowedHeight);
-            
-            GLFWmonitor* monitor = glfwGetPrimaryMonitor();
-            const GLFWvidmode* mode = glfwGetVideoMode(monitor);
-            
-            glfwSetWindowMonitor(window, monitor, 0, 0, mode->width, mode->height, mode->refreshRate);
-        } else {
-            glfwSetWindowMonitor(window, NULL, Input.windowedX, Input.windowedY, Input.windowedWidth, Input.windowedHeight, 0);
-        }
-        return;
-    }
-
-    if (gMenuMode == MENU_MODE_MAIN) {
-        if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS) {
-            glfwSetWindowShouldClose(window, 1);
-        }
-        return;
-    }
-
-    if (key == GLFW_KEY_TAB && action == GLFW_PRESS) {
-        gActiveField = 1 - gActiveField;
-    } else if (key == GLFW_KEY_BACKSPACE) {
-        if (gActiveField == 0) {
-            removeLastDigit(gSizeX);
-        } else {
-            removeLastDigit(gSizeY);
-        }
-    } else if (key == GLFW_KEY_ENTER || key == GLFW_KEY_KP_ENTER) {
-        gSizeConfirmRequested = 1;
-    } else if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS) {
-        gMenuMode = MENU_MODE_MAIN;
-    }
-}
-
-static void framebufferSizeCallback(GLFWwindow* window, int width, int height) {
-    (void)window;
-    glViewport(0, 0, width, height);
-}
 
 int main(void){
+    //
+    srand(time(NULL));
+    //
 
     if(!glfwInit()){
         printf("glfw error");
@@ -132,7 +29,6 @@ int main(void){
     }
 
     setWindowImage(window);
-
     glfwMakeContextCurrent(window);
 
     if(!gladLoadGLLoader((GLADloadproc)glfwGetProcAddress)){
@@ -146,7 +42,7 @@ int main(void){
     glClearColor(0.0f, 0.749f, 1.0f, 1.0f);
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-    glfwSetFramebufferSizeCallback(window, framebufferSizeCallback);
+    glfwSetFramebufferSizeCallback(window, menuFramebufferSizeCallback);
     glfwSetKeyCallback(window, menuKeyCallback);
     glfwSetCharCallback(window, menuCharCallback);
 
@@ -178,59 +74,118 @@ int main(void){
         updateMenuTitle(window);
 
         if (!gameStarted) {
-            renderMenu(gSizeX, gSizeY, gMenuMode == MENU_MODE_SIZE_INPUT, gActiveField);
+            if (gMenuMode == MENU_MODE_MAIN) {
+                renderMenu(gSizeX, gSizeY, 0, 0);
 
-            int currentLeftMouseState = glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT);
-            if (currentLeftMouseState == GLFW_PRESS && previousLeftMouseState == GLFW_RELEASE) {
-                double xpos, ypos;
-                glfwGetCursorPos(window, &xpos, &ypos);
-
-                int width, height;
-                glfwGetWindowSize(window, &width, &height);
-                if (width > 0 && height > 0) {
-                    float ndcX = (2.0f * (float)xpos) / (float)width - 1.0f;
-                    float ndcY = 1.0f - (2.0f * (float)ypos) / (float)height;
-                    int hit = menuHitTestNdc(ndcX, ndcY);
-
-                    if (hit == 1) {
-                        if (gMenuMode == MENU_MODE_MAIN) {
+                int currentLeftMouseState = glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT);
+                if (currentLeftMouseState == GLFW_PRESS && previousLeftMouseState == GLFW_RELEASE) {
+                    double xpos, ypos;
+                    glfwGetCursorPos(window, &xpos, &ypos);
+                    int width, height;
+                    glfwGetWindowSize(window, &width, &height);
+                    if (width > 0 && height > 0) {
+                        float ndcX = (2.0f * (float)xpos) / (float)width - 1.0f;
+                        float ndcY = 1.0f - (2.0f * (float)ypos) / (float)height;
+                        int hit = menuHitTestNdc(ndcX, ndcY, 0);
+                        if (hit == 1) {
                             gMenuMode = MENU_MODE_SIZE_INPUT;
                             gActiveField = 0;
-                        } else {
-                            gSizeConfirmRequested = 1;
-                        }
-                    } else if (hit == 2) {
-                        if (gMenuMode == MENU_MODE_MAIN) {
+                        } else if (hit == 2) {
                             glfwSetWindowShouldClose(window, 1);
+                        } else if (hit == 5) {
+                            gMenuMode = MENU_MODE_TEMPLATES;
+                        }
+                        else if (hit == 6) {
+                            gMenuMode = MENU_MODE_ABOUT;
+                        }
+                        else if (hit == 7) {
+                            gMenuMode = MENU_MODE_FAQ;
+                        }
+                    }
+                }
+                previousLeftMouseState = currentLeftMouseState;
+            } else if (gMenuMode == MENU_MODE_TEMPLATES) {
+                renderTemplatesMenu();
+
+                int currentLeftMouseState = glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT);
+                if (currentLeftMouseState == GLFW_PRESS && previousLeftMouseState == GLFW_RELEASE) {
+                    double xpos, ypos;
+                    glfwGetCursorPos(window, &xpos, &ypos);
+                    int width, height;
+                    glfwGetWindowSize(window, &width, &height);
+                    if (width > 0 && height > 0) {
+                        float ndcX = (2.0f * (float)xpos) / (float)width - 1.0f;
+                        float ndcY = 1.0f - (2.0f * (float)ypos) / (float)height;
+                        int pattern = templatesHitTestNdc(ndcX, ndcY);
+                        if (pattern >= 1 && pattern <= 4) {
+                            gSelectedPattern = pattern;
+                            gMenuMode = MENU_MODE_MAIN;
                         } else {
                             gMenuMode = MENU_MODE_MAIN;
                         }
-                    } else if (hit == 3 && gMenuMode == MENU_MODE_SIZE_INPUT) {
-                        gActiveField = 0;
-                    } else if (hit == 4 && gMenuMode == MENU_MODE_SIZE_INPUT) {
-                        gActiveField = 1;
                     }
                 }
-            }
-            previousLeftMouseState = currentLeftMouseState;
+                previousLeftMouseState = currentLeftMouseState;
+            } else if (gMenuMode == MENU_MODE_SIZE_INPUT) {
+                renderMenu(gSizeX, gSizeY, 1, gActiveField);
 
-            if (gSizeConfirmRequested) {
-                int fieldWidth = atoi(gSizeX);
-                int fieldHeight = atoi(gSizeY);
-                if (fieldWidth < 5) fieldWidth = 5;
-                if (fieldHeight < 5) fieldHeight = 5;
-                if (fieldWidth > 500) fieldWidth = 500;
-                if (fieldHeight > 500) fieldHeight = 500;
+                int currentLeftMouseState = glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT);
+                if (currentLeftMouseState == GLFW_PRESS && previousLeftMouseState == GLFW_RELEASE) {
+                    double xpos, ypos;
+                    glfwGetCursorPos(window, &xpos, &ypos);
+                    int width, height;
+                    glfwGetWindowSize(window, &width, &height);
+                    if (width > 0 && height > 0) {
+                        float ndcX = (2.0f * (float)xpos) / (float)width - 1.0f;
+                        float ndcY = 1.0f - (2.0f * (float)ypos) / (float)height;
+                        int hit = menuHitTestNdc(ndcX, ndcY, 1);
+                        if (hit == 1) {
+                            gSizeConfirmRequested = 1;
+                        } else if (hit == 2) {
+                            gMenuMode = MENU_MODE_MAIN;
+                        } else if (hit == 3) {
+                            gActiveField = 0;
+                        } else if (hit == 4) {
+                            gActiveField = 1;
+                        }
+                    }
+                }
+                previousLeftMouseState = currentLeftMouseState;
 
-                initField(fieldWidth, fieldHeight);
-                loadSample();
-                gridInit();
-                quadInit();
-                setCallback(window);
-                glfwSetWindowTitle(window, "Game of Life");
-                cleanupMenuResources();
-                gameStarted = 1;
-                gSizeConfirmRequested = 0;
+                if (gSizeConfirmRequested) {
+                    int fieldWidth = atoi(gSizeX);
+                    int fieldHeight = atoi(gSizeY);
+                    if (fieldWidth < 5) fieldWidth = 5;
+                    if (fieldHeight < 5) fieldHeight = 5;
+                    if (fieldWidth > 500) fieldWidth = 500;
+                    if (fieldHeight > 500) fieldHeight = 500;
+
+                    initField(fieldWidth, fieldHeight);
+                    loadPattern(gSelectedPattern);
+                    gridInit();
+                    quadInit();
+                    setCallback(window);
+                    glfwSetWindowTitle(window, "Game of Life");
+                    cleanupMenuResources();
+                    gameStarted = 1;
+                    gSizeConfirmRequested = 0;
+                }
+            } else if (gMenuMode == MENU_MODE_ABOUT) {
+                renderAboutMenu();
+                
+                int currentLeftMouseState = glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT);
+                if (currentLeftMouseState == GLFW_PRESS && previousLeftMouseState == GLFW_RELEASE) {
+                    gMenuMode = MENU_MODE_MAIN;
+                }
+                previousLeftMouseState = currentLeftMouseState;
+            } else if (gMenuMode == MENU_MODE_FAQ) {
+                renderFaqMenu();
+
+                int currentLeftMouseState = glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT);
+                if (currentLeftMouseState == GLFW_PRESS && previousLeftMouseState == GLFW_RELEASE) {
+                    gMenuMode = MENU_MODE_MAIN;
+                }
+                previousLeftMouseState = currentLeftMouseState;
             }
         } else {
             updateCamera(window, deltaTime);
@@ -242,7 +197,6 @@ int main(void){
             glUseProgram(Render.shader.program);
             updateMat();
             updateTexture();
-
             renderGrid();
             renderTexture();
         }

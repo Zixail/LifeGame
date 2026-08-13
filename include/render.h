@@ -1,6 +1,15 @@
 #ifndef UTILS_H
 #define UTILS_H
 
+typedef struct Projection {
+    float mat[16];
+} Projection;
+
+void makeOrtho(float left, float right, float bottom, float top, float near, float far, Projection* projection);
+
+void invertOrtho(Projection* proj, Projection* i);
+Projection* getProjection(void);
+
 struct grid{
     float top, bot;
     float right, left;
@@ -37,6 +46,13 @@ struct render_state {
     GLuint menuStartTex;
     GLuint menuExitTex;
     GLuint menuFontTex;
+    GLuint menuTemplTex;
+    GLuint menuTemp1Tex;
+    GLuint menuTemp2Tex;
+    GLuint menuTemp3Tex;
+    GLuint menuTemp4Tex;
+    GLuint menuAboutTex;
+    GLuint menuFaqTex;
     int menuReady;
     int menuFontReady;
 };
@@ -53,8 +69,12 @@ void renderGrid();
 void renderTexture();
 int menuInit();
 void renderMenu(const char* sizeX, const char* sizeY, int inputMode, int activeField);
-int menuHitTestNdc(float x, float y);
+int menuHitTestNdc(float x, float y, int inputMode);
 void cleanupMenuResources();
 void cleanupRenderResources();
+void renderTemplatesMenu(void);
+int templatesHitTestNdc(float x, float y);
+void renderAboutMenu(void);
+void renderFaqMenu(void);
 
 #endif
