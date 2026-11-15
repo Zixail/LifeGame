@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "life.h"
+#include "detector.h"
 
 struct life_state Life;
 
@@ -45,6 +46,7 @@ void updateField(){
     for (int i = 0; i < total; i++) {
         Life.state[i].cur = Life.state[i].next;
     }
+    detectorAnalyze(NULL);
 }
 
 
@@ -90,11 +92,13 @@ void initField(int width, int height){
     Life.width = width;
     Life.height = height;
     Life.state = (State*)calloc(Life.width * Life.height, sizeof(State));
+    detectorInit(width, height);
 }
 
 void freeField(){
     free(Life.state);
     Life.state = NULL;
+    detectorFree();
     Life.width = 0;
     Life.height = 0;
 }
