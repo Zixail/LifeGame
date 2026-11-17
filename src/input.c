@@ -8,6 +8,7 @@
 #include "input.h"
 #include "render.h"
 #include "life.h"
+#include "detector.h"
 
 int gSelectedPattern = 4;
 int gMenuMode = MENU_MODE_MAIN;
@@ -173,21 +174,74 @@ void keyCallback(GLFWwindow* window, int key, int scancode, int action, int mod)
         Input.freeze = !Input.freeze;
     }
     if(key == GLFW_KEY_P && action == GLFW_PRESS){
-        for(int x = 0; x < Life.height; ++x){
-            for(int y = 0; y < Life.width; ++y){
+        // Заполнение поля случайными клетками и сброс истории
+        for(int y = 0; y < (int)Life.height; ++y){
+            for(int x = 0; x < (int)Life.width; ++x){
                 char life = rand() % 3 == 0;
                 Life.state[y * Life.width + x].cur = life;
             }
         }
-        for (int i = 0; i < Life.width * Life.height; i++) {
+        for (int i = 0; i < (int)(Life.width * Life.height); i++) {
             Life.state[i].cycleCount = 0;
+            Life.state[i].type = CELL_TYPE_NORMAL;
         }
+        resetHistory();
     }
-    if(key == GLFW_KEY_R && action == GLFW_PRESS){
-        for (int i = 0; i < Life.width * Life.height; i++) {
-            Life.state[i].cycleCount = 0;
-            Life.state[i].cur = 0;
-        }
+    if((key == GLFW_KEY_R || key == GLFW_KEY_C) && action == GLFW_PRESS){
+        // Полная очистка поля
+        loadPattern(PATTERN_EMPTY);
+    }
+    // Быстрая загрузка расширенной базы фигур и тестовых полей
+    if((key == GLFW_KEY_0 || key == GLFW_KEY_G || key == GLFW_KEY_T) && action == GLFW_PRESS){
+        loadPattern(PATTERN_SHOWCASE);
+    }
+    if(key == GLFW_KEY_1 && action == GLFW_PRESS){
+        loadPattern(PATTERN_GLIDER);
+    }
+    if(key == GLFW_KEY_2 && action == GLFW_PRESS){
+        loadPattern(PATTERN_FIGURE_EIGHT);
+    }
+    if(key == GLFW_KEY_3 && action == GLFW_PRESS){
+        loadPattern(PATTERN_PULSAR);
+    }
+    if(key == GLFW_KEY_4 && action == GLFW_PRESS){
+        loadPattern(PATTERN_OCTAGON2);
+    }
+    if(key == GLFW_KEY_5 && action == GLFW_PRESS){
+        loadPattern(PATTERN_PENTADECATHLON);
+    }
+    if(key == GLFW_KEY_6 && action == GLFW_PRESS){
+        loadPattern(PATTERN_GLIDER_GUN);
+    }
+    if(key == GLFW_KEY_7 && action == GLFW_PRESS){
+        loadPattern(PATTERN_LWSS);
+    }
+    if(key == GLFW_KEY_8 && action == GLFW_PRESS){
+        loadPattern(PATTERN_KOK_GALAXY);
+    }
+    if(key == GLFW_KEY_9 && action == GLFW_PRESS){
+        loadPattern(PATTERN_MWSS);
+    }
+    if(key == GLFW_KEY_B && action == GLFW_PRESS){
+        loadPattern(PATTERN_BLINKER);
+    }
+    if(key == GLFW_KEY_E && action == GLFW_PRESS){
+        loadPattern(PATTERN_EATER1);
+    }
+    if(key == GLFW_KEY_M && action == GLFW_PRESS){
+        loadPattern(PATTERN_METHUSELAHS);
+    }
+    if(key == GLFW_KEY_K && action == GLFW_PRESS){
+        loadPattern(PATTERN_KOK_GALAXY);
+    }
+    if(key == GLFW_KEY_H && action == GLFW_PRESS){
+        loadPattern(PATTERN_HWSS);
+    }
+    if(key == GLFW_KEY_L && action == GLFW_PRESS){
+        loadPattern(PATTERN_MEGA_FIELD);
+    }
+    if(key == GLFW_KEY_U && action == GLFW_PRESS){
+        loadPattern(PATTERN_GRAND_FIELD);
     }
     if(key == GLFW_KEY_Z && action == GLFW_PRESS){
         Input.updateInterval *= (double)2;
@@ -329,10 +383,14 @@ void processMouseClick(GLFWwindow* window, int action){
 
     if (cellX >= 0 && cellX < textureWidth && cellY >= 0 && cellY < textureHeight) {                
         int index = cellY * textureWidth + cellX;
-        Life.state[index].cur = action;
-        Life.state[index].prev = 0;
-        Life.state[index].two = 0;
-        Life.state[index].cycleCount = 0;             
+        if (Life.state[index].cur != action) {
+            Life.state[index].cur = action;
+            Life.state[index].prev = 0;
+            Life.state[index].two = 0;
+            Life.state[index].type = CELL_TYPE_NORMAL;
+            Life.state[index].cycleCount = 0;
+            resetHistory();
+        }
     }
 }
 

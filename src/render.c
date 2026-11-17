@@ -567,6 +567,7 @@ void updateTexture(){
             int texIdx = (i * Render.textureWidth + j) * 4;
 
             int isCyclic = (Life.state[fieldIdx].cycleCount >= 20);
+            int cellType = Life.state[fieldIdx].type;
             if (cell == 0){
                 Render.textureData[texIdx + 0] = 255;
                 Render.textureData[texIdx + 1] = 255;
@@ -574,13 +575,22 @@ void updateTexture(){
                 Render.textureData[texIdx + 3] = 0; 
             }
             else{
-                if (isCyclic) {
+                if (cellType == CELL_TYPE_SPACESHIP) {
+                    // Изумрудный цвет для космических кораблей и глайдеров
+                    Render.textureData[texIdx + 0] = 0;  
+                    Render.textureData[texIdx + 1] = 210;  
+                    Render.textureData[texIdx + 2] = 70;   
+                    Render.textureData[texIdx + 3] = 255; 
+                }
+                else if (cellType == CELL_TYPE_OSCILLATOR || cellType == CELL_TYPE_STILL_LIFE || isCyclic) {
+                    // Красный цвет для неподвижных фигур и осцилляторов
                     Render.textureData[texIdx + 0] = 255;  
                     Render.textureData[texIdx + 1] = 0;  
                     Render.textureData[texIdx + 2] = 0;   
                     Render.textureData[texIdx + 3] = 255; 
                 }
                 else {
+                    // Черный цвет для обычных живых клеток
                     Render.textureData[texIdx + 0] = 0;  
                     Render.textureData[texIdx + 1] = 0;  
                     Render.textureData[texIdx + 2] = 0;   
