@@ -243,6 +243,10 @@ void keyCallback(GLFWwindow* window, int key, int scancode, int action, int mod)
     if(key == GLFW_KEY_U && action == GLFW_PRESS){
         loadPattern(PATTERN_GRAND_FIELD);
     }
+    if(key == GLFW_KEY_F && action == GLFW_PRESS){
+        // Переключение алгоритма анализа: Topological -> Floyd -> Brent
+        detectorCycleAlgorithm();
+    }
     if(key == GLFW_KEY_Z && action == GLFW_PRESS){
         Input.updateInterval *= (double)2;
         if (Input.updateInterval > 1.6f) Input.updateInterval = 1.6f;

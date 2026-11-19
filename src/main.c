@@ -9,9 +9,10 @@
 #include "life.h"
 #include "input.h"
 #include <time.h>
+#include "detector.h"
 
 
-int main(void){
+int main(int argc, char* argv[]){
     //
     srand(time(NULL));
     //
@@ -62,6 +63,41 @@ int main(void){
 
     double lastFrameTime = glfwGetTime();
     int gameStarted = 0;
+    int directPattern = -1;
+    DetectorAlgorithm initialAlgo = DETECTOR_ALGO_TOPOLOGICAL;
+
+    // Разбор аргументов командной строки для прямого запуска режимов и алгоритмов
+    for (int i = 1; i < argc; i++) {
+        if (strstr(argv[i], "showcase") || strstr(argv[i], "test") || strcmp(argv[i], "-s") == 0) {
+            directPattern = PATTERN_SHOWCASE;
+        } else if (strstr(argv[i], "mega") || strcmp(argv[i], "-m") == 0 || strstr(argv[i], "large")) {
+            directPattern = PATTERN_MEGA_FIELD;
+        } else if (strstr(argv[i], "grand") || strcmp(argv[i], "-g") == 0) {
+            directPattern = PATTERN_GRAND_FIELD;
+        } else if (strstr(argv[i], "gun") || strcmp(argv[i], "--gun") == 0) {
+            directPattern = PATTERN_GLIDER_GUN;
+        }
+
+        if (strstr(argv[i], "floyd") || strcmp(argv[i], "-f") == 0 || strcmp(argv[i], "-af") == 0) {
+            initialAlgo = DETECTOR_ALGO_FLOYD;
+        } else if (strstr(argv[i], "brent") || strcmp(argv[i], "-b") == 0 || strcmp(argv[i], "-ab") == 0) {
+            initialAlgo = DETECTOR_ALGO_BRENT;
+        } else if (strstr(argv[i], "topological") || strstr(argv[i], "history") || strcmp(argv[i], "-t") == 0 || strcmp(argv[i], "-at") == 0) {
+            initialAlgo = DETECTOR_ALGO_TOPOLOGICAL;
+        }
+    }
+
+    detectorSetAlgorithm(initialAlgo);
+    if (directPattern >= 0) {
+        initField(100, 100);
+        loadPattern(directPattern);
+        gridInit();
+        quadInit();
+        setCallback(window);
+        cleanupMenuResources();
+        gameStarted = 1;
+    }
+
     int previousLeftMouseState = GLFW_RELEASE;
 
     while(!glfwWindowShouldClose(window)){
@@ -71,7 +107,7 @@ int main(void){
 
         glfwPollEvents();                
         glClear(GL_COLOR_BUFFER_BIT);      
-        updateMenuTitle(window);
+        if (!gameStarted) updateMenuTitle(window);
 
         if (!gameStarted) {
             if (gMenuMode == MENU_MODE_MAIN) {
@@ -192,6 +228,47 @@ int main(void){
 
             if(!isFreeze()) {
                 updateField();  
+            }
+
+            // Периодическое обновление заголовка окна со статусом детектора
+            static double s_lastTitleUpdate = 0.0;
+            double curTime = glfwGetTime();
+            if (curTime - s_lastTitleUpdate >= 0.25) {
+                s_lastTitleUpdate = curTime;
+                DetectorAlgorithm algo = detectorGetAlgorithm();
+                char titleBuf[256];
+                if (algo == DETECTOR_ALGO_TOPOLOGICAL) {
+                    const DetectionSummary *ds = detectorGetLastSummary();
+                    if (ds && ds->totalObjects > 0) {
+                        snprintf(titleBuf, sizeof(titleBuf),
+                             "[TOPOLOGICAL HASH] | Objects: %d (Osc: %d, Ships: %d, Still: %d) | F: Algo | L: Mega, U: Grand, 0: All",
+                             ds->totalObjects, ds->oscillatorCount, ds->spaceshipCount, ds->stillLifeCount);
+                    } else {
+                        snprintf(titleBuf, sizeof(titleBuf),
+                             "[TOPOLOGICAL HASH] | No cyclic objects | F: Algo | L: Mega, U: Grand, 0: All");
+                    }
+                } else if (algo == DETECTOR_ALGO_FLOYD) {
+                    const GlobalCycleResult *gr = detectorGetGlobalResult();
+                    if (gr && gr->detected) {
+                        snprintf(titleBuf, sizeof(titleBuf),
+                             "[FLOYD O(1)] | Cycle: YES (Period: %d, Transient: %d, Steps: %d) | F: Algo | L: Mega, U: Grand",
+                             gr->period, gr->transient, gr->stepCount);
+                    } else {
+                        snprintf(titleBuf, sizeof(titleBuf),
+                             "[FLOYD O(1)] | Searching cycle... | F: Algo | L: Mega, U: Grand, 0: All");
+                    }
+                } else if (algo == DETECTOR_ALGO_BRENT) {
+                    const GlobalCycleResult *gr = detectorGetGlobalResult();
+                    if (gr && gr->detected) {
+                        snprintf(titleBuf, sizeof(titleBuf),
+                             "[BRENT O(1)] | Cycle: YES (Period: %d, Transient: %d, Steps: %d) [Fast Teleport] | F: Algo | L: Mega, U: Grand",
+                             gr->period, gr->transient, gr->stepCount);
+                    } else {
+                        snprintf(titleBuf, sizeof(titleBuf),
+                             "[BRENT O(1)] | Searching cycle... | F: Algo | L: Mega, U: Grand, 0: All");
+                    }
+                }
+                glfwSetWindowTitle(window, titleBuf);
             }
 
             glUseProgram(Render.shader.program);

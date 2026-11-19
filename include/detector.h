@@ -7,6 +7,13 @@
 #define MAX_HISTORY_STEPS 256
 #define MAX_OBJECTS_TRACKED 64
 
+// Режимы работы детектора циклов
+typedef enum {
+    DETECTOR_ALGO_TOPOLOGICAL = 0, // Покластерный топологический анализ (BFS R=2)
+    DETECTOR_ALGO_FLOYD = 1,       // Алгоритм Флойда "Черепаха и заяц" O(1) RAM
+    DETECTOR_ALGO_BRENT = 2        // Алгоритм Брента (телепортация степенями двойки) O(1) RAM
+} DetectorAlgorithm;
+
 // Типы распознанных циклических структур
 typedef enum {
     PATTERN_UNKNOWN = 0,
@@ -34,19 +41,36 @@ typedef struct {
     DetectedPattern patterns[MAX_OBJECTS_TRACKED];
 } DetectionSummary;
 
-// Инициализация буферов детектора под размер поля
+// Результат глобального поиска цикла (для алгоритмов Флойда и Брента)
+typedef struct {
+    int detected;
+    int period;
+    int transient;   // Предпериод mu (время стабилизации до входа в цикл)
+    int stepCount;   // Затраченное число шагов эволюции поля
+    int dx, dy;
+    int cellCount;
+    DetectorAlgorithm algo;
+    const char *algoName;
+} GlobalCycleResult;
+
+// Инициализация и освобождение буферов детектора
 void detectorInit(int width, int height);
-
-// Освобождение памяти детектора
 void detectorFree(void);
-
-// Сброс накопленной истории поколений
 void detectorReset(void);
 
-// Пошаговый топологический анализ поля
-void detectorAnalyze(DetectionSummary *outSummary);
+// Управление выбором активного алгоритма детекции
+void detectorSetAlgorithm(DetectorAlgorithm algo);
+DetectorAlgorithm detectorGetAlgorithm(void);
+void detectorCycleAlgorithm(void);
+const char* detectorGetAlgorithmName(DetectorAlgorithm algo);
 
-// Получение последней сводки распознавания
+// Запуск анализа поля активным алгоритмом и получение результатов
+void detectorAnalyze(DetectionSummary *outSummary);
 const DetectionSummary* detectorGetLastSummary(void);
+const GlobalCycleResult* detectorGetGlobalResult(void);
+
+// Независимые функции глобального поиска циклов (O(1) памяти)
+GlobalCycleResult detectorRunFloyd(int maxSteps);
+GlobalCycleResult detectorRunBrent(int maxSteps);
 
 #endif
